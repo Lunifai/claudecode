@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense & Income Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💰 Expense & Income Tracker</h1>
+        </header>
+
+        <div class="balance-section">
+            <div class="balance-card">
+                <h3>Current Balance</h3>
+                <p class="balance-amount" id="balance">$0.00</p>
+            </div>
+            <div class="summary-cards">
+                <div class="summary-card income">
+                    <h4>Total Income</h4>
+                    <p id="total-income">$0.00</p>
+                </div>
+                <div class="summary-card expense">
+                    <h4>Total Expenses</h4>
+                    <p id="total-expense">$0.00</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="transaction-form">
+            <h2>Add New Transaction</h2>
+            <form id="transaction-form">
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <input type="text" id="description" placeholder="e.g., Grocery shopping" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="amount">Amount</label>
+                    <input type="number" id="amount" placeholder="0.00" step="0.01" min="0.01" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="category">Category</label>
+                    <input type="text" id="category" placeholder="e.g., Food, Salary, Entertainment">
+                </div>
+
+                <div class="form-group">
+                    <label for="date">Date</label>
+                    <input type="date" id="date" required>
+                </div>
+
+                <div class="form-group radio-group">
+                    <label>Type</label>
+                    <div class="radio-options">
+                        <label class="radio-label">
+                            <input type="radio" name="type" value="income" required>
+                            <span class="radio-custom income">Income</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="type" value="expense" required>
+                            <span class="radio-custom expense">Expense</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit">Add Transaction</button>
+            </form>
+        </div>
+
+        <div class="transactions-section">
+            <div class="transactions-header">
+                <h2>Transaction History</h2>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="income">Income</button>
+                    <button class="filter-btn" data-filter="expense">Expenses</button>
+                </div>
+            </div>
+
+            <div id="transactions-list" class="transactions-list">
+                <p class="empty-state">No transactions yet. Add your first transaction above!</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

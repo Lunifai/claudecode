@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pyairtable import Api
 from openai import AsyncOpenAI
 from bs4 import BeautifulSoup
+import html2text
 import logging
 from datetime import datetime
 import time
@@ -58,6 +59,12 @@ class IcebreakerGenerator:
         self.icebreaker_field_name = icebreaker_field_name
         self.semaphore = asyncio.Semaphore(max_concurrent)
 
+        # Initialize HTML to Markdown converter
+        self.html_converter = html2text.HTML2Text()
+        self.html_converter.ignore_links = False
+        self.html_converter.ignore_images = True
+        self.html_converter.body_width = 0  # Don't wrap lines
+
     def fetch_records(self, filter_formula: Optional[str] = None) -> List[LeadRecord]:
         """Fetch records from Airtable that need icebreakers"""
         logger.info("Fetching records from Airtable...")
@@ -88,8 +95,8 @@ class IcebreakerGenerator:
         logger.info(f"Found {len(lead_records)} records to process")
         return lead_records
 
-    async def scrape_website(self, url: str, session: aiohttp.ClientSession) -> str:
-        """Scrape website to get company description"""
+    async def fetch_website_html(self, url: str, session: aiohttp.ClientSession) -> str:
+        """Fetch HTML from website"""
         try:
             # Ensure URL has protocol
             if not url.startswith('http'):
@@ -97,7 +104,7 @@ class IcebreakerGenerator:
 
             async with session.get(
                 url,
-                timeout=aiohttp.ClientTimeout(total=10),
+                timeout=aiohttp.ClientTimeout(total=15),
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             ) as response:
                 if response.status != 200:
@@ -105,28 +112,72 @@ class IcebreakerGenerator:
                     return ""
 
                 html = await response.text()
-                soup = BeautifulSoup(html, 'html.parser')
-
-                # Remove script and style elements
-                for script in soup(["script", "style"]):
-                    script.decompose()
-
-                # Get text content
-                text = soup.get_text()
-                lines = (line.strip() for line in text.splitlines())
-                chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-                text = ' '.join(chunk for chunk in chunks if chunk)
-
-                # Get meta description if available
-                meta_desc = soup.find('meta', attrs={'name': 'description'})
-                if meta_desc and meta_desc.get('content'):
-                    return meta_desc['content'] + " " + text[:500]
-
-                # Return first 1000 characters
-                return text[:1000]
+                return html
 
         except Exception as e:
-            logger.warning(f"Error scraping {url}: {str(e)}")
+            logger.warning(f"Error fetching {url}: {str(e)}")
+            return ""
+
+    def html_to_markdown(self, html: str) -> str:
+        """Convert HTML to Markdown format"""
+        if not html:
+            return ""
+
+        try:
+            # Clean up the HTML first
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Remove script, style, nav, footer, and other non-content elements
+            for element in soup(["script", "style", "nav", "footer", "header", "aside", "iframe"]):
+                element.decompose()
+
+            # Convert to markdown
+            markdown = self.html_converter.handle(str(soup))
+
+            # Clean up excessive whitespace
+            lines = [line.strip() for line in markdown.split('\n') if line.strip()]
+            markdown = '\n'.join(lines)
+
+            # Limit to first 5000 characters for summarization
+            return markdown[:5000]
+
+        except Exception as e:
+            logger.warning(f"Error converting HTML to markdown: {str(e)}")
+            return ""
+
+    async def summarize_website(self, markdown_content: str, company: str) -> str:
+        """Summarize website content using OpenAI"""
+        if not markdown_content:
+            return ""
+
+        try:
+            prompt = f"""Analyse le contenu suivant du site web de l'entreprise "{company}" et crée un résumé concis de 3-4 phrases qui capture:
+
+1. Ce que fait l'entreprise (activité principale, produits/services)
+2. Leur mission, vision ou valeurs distinctives
+3. Tout point différenciant, innovation ou engagement particulier
+
+Contenu du site web (en markdown):
+{markdown_content}
+
+Résumé (en français, 3-4 phrases maximum):"""
+
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Tu es un expert en analyse de contenu web et synthèse d'information."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=300
+            )
+
+            summary = response.choices[0].message.content.strip()
+            logger.info(f"✓ Generated summary for {company}")
+            return summary
+
+        except Exception as e:
+            logger.error(f"Error summarizing website for {company}: {str(e)}")
             return ""
 
     async def generate_icebreaker(
@@ -134,7 +185,7 @@ class IcebreakerGenerator:
         firstname: str,
         company: str,
         role: str,
-        company_context: str
+        company_summary: str
     ) -> str:
         """Generate a personalized French icebreaker using OpenAI"""
 
@@ -145,31 +196,33 @@ Génère un icebreaker personnalisé de 2 lignes maximum pour un email de prospe
 - Prénom du lead: {firstname}
 - Entreprise: {company}
 - Poste: {role}
-- Contexte de l'entreprise: {company_context}
+- Résumé de l'entreprise (basé sur leur site web): {company_summary}
 
 L'icebreaker doit:
 1. Commencer par "Bonjour {firstname},"
-2. Faire référence à quelque chose de spécifique et positif sur l'entreprise
-3. Être authentique et engageant
-4. Faire 2 lignes maximum (après le "Bonjour")
-5. Être en français professionnel mais chaleureux
+2. Faire référence à quelque chose de SPÉCIFIQUE et positif tiré du résumé de l'entreprise
+3. Montrer que tu as fait des recherches sur leur entreprise
+4. Être authentique, engageant et personnalisé
+5. Faire exactement 2 lignes (après le "Bonjour")
+6. Être en français professionnel mais chaleureux
+7. Éviter les généralités - utilise des détails concrets du résumé
 
-Exemple de format:
+Exemple de format (basé sur une vraie entreprise):
 Bonjour Mathieu,
 
 J'aime beaucoup l'engagement de Caprionis pour soutenir la transition vers une économie circulaire. Ça fait plaisir de voir votre initiative pour valoriser le réemploi et réduire les déchets dans le secteur du BTP.
 
-Ne génère que l'icebreaker, sans autre texte."""
+IMPORTANT: Base-toi sur le résumé fourni pour être spécifique et pertinent. Ne génère que l'icebreaker, sans autre texte."""
 
         try:
             response = await self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",  # Faster and cheaper for this task
+                model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "Tu es un expert en cold email B2B en français."},
+                    {"role": "system", "content": "Tu es un expert en cold email B2B en français. Tu crées des icebreakers personnalisés basés sur des recherches réelles."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.8,
-                max_tokens=200
+                max_tokens=250
             )
 
             icebreaker = response.choices[0].message.content.strip()
@@ -184,23 +237,35 @@ Ne génère que l'icebreaker, sans autre texte."""
         lead: LeadRecord,
         session: aiohttp.ClientSession
     ) -> Dict:
-        """Process a single record: scrape website and generate icebreaker"""
+        """Process a single record following the pipeline: HTML → Markdown → Summary → Icebreaker"""
         async with self.semaphore:  # Limit concurrent requests
             try:
                 logger.info(f"Processing {lead.firstname} at {lead.company}")
 
-                # Scrape website for context
-                company_context = await self.scrape_website(lead.website_url, session)
+                # Step 1: Fetch website HTML
+                html = await self.fetch_website_html(lead.website_url, session)
 
-                if not company_context:
-                    company_context = f"{lead.company} - {lead.role}"
+                # Step 2: Convert HTML to Markdown
+                markdown = self.html_to_markdown(html) if html else ""
 
-                # Generate icebreaker
+                # Step 3: Summarize the website content
+                company_summary = ""
+                if markdown:
+                    company_summary = await self.summarize_website(markdown, lead.company)
+
+                # Fallback if no summary generated
+                if not company_summary:
+                    company_summary = f"{lead.company}"
+                    if lead.role:
+                        company_summary += f" - Entreprise dans le secteur {lead.role}"
+                    logger.warning(f"No website summary for {lead.company}, using fallback")
+
+                # Step 4: Generate personalized icebreaker
                 icebreaker = await self.generate_icebreaker(
                     lead.firstname,
                     lead.company,
                     lead.role,
-                    company_context
+                    company_summary
                 )
 
                 if icebreaker:

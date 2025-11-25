@@ -1,5 +1,6 @@
 aiohttp==3.9.1
 beautifulsoup4==4.12.2
+html2text==2024.2.26
 openai==1.54.0
 pyairtable==2.3.3
 python-dotenv==1.0.0

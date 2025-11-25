@@ -5,12 +5,39 @@ A high-performance Python script that generates personalized French icebreakers 
 ## 🚀 Key Features
 
 - **Parallel Processing**: Processes 10+ records simultaneously (configurable)
-- **Smart Website Scraping**: Automatically extracts company context from websites
+- **Smart Website Analysis**: HTML → Markdown → Summary → Icebreaker pipeline
 - **OpenAI Integration**: Generates authentic, personalized French icebreakers
 - **Airtable Sync**: Seamlessly reads and writes to your Airtable base
 - **Batch Processing**: Handles large datasets efficiently
 - **Error Handling**: Robust error handling and detailed logging
 - **Fast**: Processes 100 records in ~2-3 minutes (vs 15-20 minutes with n8n)
+
+## 🔄 How It Works
+
+The generator follows a sophisticated 4-step pipeline for each lead:
+
+```
+1. 🌐 Fetch Website HTML
+   ↓ Makes HTTP request to the company website
+
+2. 📄 Convert to Markdown
+   ↓ Transforms HTML into clean, structured markdown
+   ↓ Removes navigation, scripts, and non-content elements
+
+3. 🤖 AI Summarization
+   ↓ Uses OpenAI to create a 3-4 sentence summary
+   ↓ Extracts: company activity, mission/values, differentiators
+
+4. ✍️ Generate Icebreaker
+   ✓ Creates personalized 2-line French icebreaker
+   ✓ Based on real insights from the company website
+```
+
+This approach ensures icebreakers are:
+- **Specific**: Based on actual company information
+- **Relevant**: Focused on key differentiators
+- **Authentic**: Shows genuine research
+- **Effective**: Optimized for cold email engagement
 
 ## 📋 Prerequisites
 
@@ -110,9 +137,12 @@ python icebreaker_generator.py
 
 This will:
 1. Fetch all records from Airtable where the `Icebreaker` field is empty
-2. Scrape each company's website for context
-3. Generate personalized French icebreakers using OpenAI
-4. Update Airtable with the generated icebreakers
+2. For each record, follow the pipeline:
+   - Fetch the company website HTML
+   - Convert HTML to clean Markdown
+   - Generate an AI summary of the company
+   - Create a personalized French icebreaker
+3. Update Airtable with the generated icebreakers
 
 ### Expected Output
 
@@ -122,6 +152,8 @@ This will:
 2024-11-25 10:30:16 - INFO - Processing batch 1 (45 records)...
 2024-11-25 10:30:17 - INFO - Processing Marie at TechCorp
 2024-11-25 10:30:17 - INFO - Processing Jean at InnovSolutions
+2024-11-25 10:30:20 - INFO - ✓ Generated summary for TechCorp
+2024-11-25 10:30:21 - INFO - ✓ Generated summary for InnovSolutions
 ...
 2024-11-25 10:30:45 - INFO - ✓ Generated icebreaker for Marie
 2024-11-25 10:30:46 - INFO - ✓ Generated icebreaker for Jean
@@ -180,11 +212,18 @@ await generator.run(batch_size=25)  # Process 25 records at a time
 
 Based on OpenAI pricing (GPT-4o-mini):
 
-- **Per icebreaker**: ~$0.001 - $0.003
-- **100 icebreakers**: ~$0.10 - $0.30
-- **1000 icebreakers**: ~$1 - $3
+Each lead requires 2 API calls:
+1. **Website Summarization**: ~$0.001 - $0.002 per call
+2. **Icebreaker Generation**: ~$0.001 - $0.002 per call
+
+**Total costs:**
+- **Per icebreaker**: ~$0.002 - $0.004
+- **100 icebreakers**: ~$0.20 - $0.40
+- **1000 icebreakers**: ~$2 - $4
 
 Airtable API is free for reasonable usage.
+
+**Note:** Actual costs may vary based on website content length. The pipeline is optimized to use GPT-4o-mini (the most cost-effective model) for both summarization and generation.
 
 ## 🔍 Troubleshooting
 
